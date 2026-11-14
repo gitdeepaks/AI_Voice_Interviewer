@@ -1,0 +1,294 @@
+[
+  {
+    "id": "sd-rate-limiting",
+    "category": "system-design",
+    "difficulty": "medium",
+    "question": "Design a rate limiter for a public API that serves many clients across multiple servers. How would you limit each API key to a fixed number of requests per minute?",
+    "followUps": [
+      "How do token bucket, leaky bucket, fixed window and sliding window compare, and which would you pick here?",
+      "How do you keep counts consistent across many API servers without adding a lot of latency to each request?",
+      "What should the client see when it is throttled, and what happens if your Redis cluster goes down?"
+    ],
+    "goodAnswerCovers": [
+      "Names at least two algorithms and explains the trade-off, such as fixed-window burst at boundaries versus sliding-window accuracy and cost",
+      "Uses a shared store like Redis with atomic operations (INCR with expiry or a Lua script) so distributed servers agree on counts",
+      "Returns HTTP 429 with a Retry-After header and rate-limit headers so clients can back off",
+      "Chooses a failure mode on purpose (fail open or fail closed) and explains why",
+      "Mentions limiting at several layers, such as per key, per IP and per endpoint, or at the gateway"
+    ]
+  },
+  {
+    "id": "sd-consistent-hashing",
+    "category": "system-design",
+    "difficulty": "hard",
+    "question": "You have a cache cluster that shards keys across N nodes using hash(key) mod N. Why does that break down when nodes are added or removed, and how does consistent hashing fix it?",
+    "followUps": [
+      "What are virtual nodes, and what problem do they solve?",
+      "How would you handle a hot key that overloads one node even with an even key spread?",
+      "How do replication and node failure work on the hash ring?"
+    ],
+    "goodAnswerCovers": [
+      "Explains that mod N remaps almost every key when N changes, which causes a cache stampede on the backing store",
+      "Describes the hash ring: nodes and keys hash onto the same space and each key goes to the next node clockwise",
+      "Notes that adding or removing a node only moves about 1/N of the keys",
+      "Uses virtual nodes to even out the load and to weight nodes by capacity",
+      "Handles replication by storing each key on the next K distinct nodes, and treats hot keys separately (key splitting or a local cache)"
+    ]
+  },
+  {
+    "id": "sd-back-of-envelope",
+    "category": "system-design",
+    "difficulty": "medium",
+    "question": "Walk me through a back-of-the-envelope estimate for a photo-sharing app with 10 million daily active users. Estimate the requests per second, the storage per year and the bandwidth.",
+    "followUps": [
+      "What assumptions did you make, and which one would change the design most if it were wrong?",
+      "How does peak traffic differ from average, and how do you plan capacity for it?",
+      "Given your numbers, what is the first bottleneck you would expect to hit?"
+    ],
+    "goodAnswerCovers": [
+      "States assumptions out loud first, such as uploads and views per user per day and the average photo size",
+      "Converts daily volume to per-second load using about 86,400 seconds per day (roughly 100k) and applies a peak factor of 2 to 5 times",
+      "Separates read and write traffic and notes that the read-to-write ratio is high",
+      "Estimates storage per year including thumbnails or multiple resolutions and replication overhead",
+      "Uses the numbers to drive a decision, such as needing object storage and a CDN rather than serving images from app servers"
+    ]
+  },
+  {
+    "id": "sd-cdn-read-replicas",
+    "category": "system-design",
+    "difficulty": "medium",
+    "question": "A read-heavy product catalog page is slow and the primary database is near its CPU limit. How would you use a CDN and read replicas to scale it?",
+    "followUps": [
+      "How do you handle replication lag, for example when a user edits a product and then immediately reloads the page?",
+      "What would you cache at the CDN versus in an application cache like Redis, and how do you invalidate each?",
+      "When would read replicas stop being enough, and what would you do next?"
+    ],
+    "goodAnswerCovers": [
+      "Puts static assets and cacheable responses behind a CDN with sensible Cache-Control headers, TTLs and stale-while-revalidate",
+      "Routes reads to replicas and writes to the primary, through the app or a proxy",
+      "Addresses replication lag with read-your-writes, such as sending a user's reads to the primary for a short window after they write",
+      "Has an invalidation plan: purge by URL or surrogate keys, or versioned asset URLs",
+      "Knows the limits of replicas: they do not scale writes, so the next steps are caching, partitioning or sharding"
+    ]
+  },
+  {
+    "id": "js-promise-pool",
+    "category": "javascript",
+    "difficulty": "hard",
+    "question": "Talk me through how you'd implement a function promisePool(tasks, limit) where tasks is an array of functions that each return a promise. It should run at most limit tasks at a time and resolve with all the results in the original order.",
+    "followUps": [
+      "What should happen if one task rejects: fail fast or collect every result like Promise.allSettled?",
+      "How would you add cancellation, for example with an AbortSignal?",
+      "Why can't you just pass an array of promises instead of functions that return promises?"
+    ],
+    "goodAnswerCovers": [
+      "Takes functions rather than promises, because a promise starts running the moment it is created",
+      "Keeps exactly limit tasks in flight by starting the next task when one settles, using workers or a recursive runner",
+      "Stores each result by its original index so the output order matches the input order",
+      "Handles edge cases: an empty task list, a limit larger than the number of tasks, and a limit of 0 or less",
+      "Defines rejection behavior on purpose and does not leave unhandled rejections behind"
+    ]
+  },
+  {
+    "id": "js-event-emitter",
+    "category": "javascript",
+    "difficulty": "medium",
+    "question": "Talk me through how you'd implement a small EventEmitter with on, off, once and emit, and the edge cases that commonly break naive implementations.",
+    "followUps": [
+      "What happens if a listener removes itself, or adds a new listener, while emit is running?",
+      "How does off work for a listener that was registered with once?",
+      "If a listener throws, should the remaining listeners still run?"
+    ],
+    "goodAnswerCovers": [
+      "Copies the listener array before iterating in emit so changes during emit do not skip or double-call listeners",
+      "Wraps once listeners while keeping a reference to the original function so off(event, originalFn) still works",
+      "Handles the same function being registered twice and decides whether off removes one copy or all of them",
+      "Has a clear policy for a listener that throws (stop, or catch and keep going) and mentions Node's special handling of the error event",
+      "Mentions memory leaks from listeners that are never removed, and returning an unsubscribe function from on"
+    ]
+  },
+  {
+    "id": "js-fetch-http-500",
+    "category": "javascript",
+    "difficulty": "medium",
+    "question": "A teammate wraps a fetch call in try/catch, but when the server returns HTTP 500 the catch block never runs. Why, and how would you fix it?",
+    "followUps": [
+      "Which situations do make fetch reject?",
+      "How would you write a reusable wrapper that throws useful errors and includes the response body?",
+      "How would you add a timeout and retries to that wrapper, and which status codes are safe to retry?"
+    ],
+    "goodAnswerCovers": [
+      "Explains that fetch only rejects on network failure, CORS errors or an abort, not on HTTP error statuses",
+      "Checks response.ok (status 200 to 299) or response.status and throws when it is not ok",
+      "Builds a wrapper that reads the error body safely (it may not be JSON) and attaches the status to the error",
+      "Uses AbortController or AbortSignal.timeout for timeouts",
+      "Retries only idempotent requests on 5xx or 429 or network errors, with exponential backoff and jitter"
+    ]
+  },
+  {
+    "id": "js-stale-closure-effect",
+    "category": "javascript",
+    "difficulty": "medium",
+    "question": "In a React component, a useEffect sets up setInterval that logs a count state variable every second, but it always logs the initial value even after the count changes. What is going on, and how do you fix it?",
+    "followUps": [
+      "Why is adding count to the dependency array a correct fix, and what does it cost here?",
+      "When would you use a functional state update, a ref, or useEffectEvent instead?",
+      "Why is silencing the exhaustive-deps lint rule the wrong fix?"
+    ],
+    "goodAnswerCovers": [
+      "Explains that the effect's callback closes over the count from the render in which the effect ran",
+      "Notes that an empty dependency array means the effect never re-runs, so the interval keeps the stale value",
+      "Offers correct fixes: list count as a dependency with cleanup, use a functional update setCount(c => c + 1), or read from a ref",
+      "Mentions useEffectEvent for reading the latest values from inside an effect without re-subscribing",
+      "Includes cleanup with clearInterval and treats the lint rule as a signal to change the code, not suppress it"
+    ]
+  },
+  {
+    "id": "bh-production-bug",
+    "category": "behavioral",
+    "difficulty": "medium",
+    "question": "Tell me about a production bug you fixed. How did you find it, what was the root cause, and what did you change so it would not happen again?",
+    "followUps": [
+      "How did you weigh a quick mitigation against the proper fix?",
+      "Who did you communicate with while the bug was live, and how?",
+      "If you saw the same symptoms tomorrow, what would you check first?"
+    ],
+    "goodAnswerCovers": [
+      "Gives a specific, concrete incident with real impact (users affected, errors, revenue or latency)",
+      "Describes a methodical diagnosis using logs, metrics, traces or a reproduction rather than guessing",
+      "Separates the immediate mitigation (rollback, feature flag) from the root-cause fix",
+      "Names follow-up prevention, such as a regression test, an alert, a postmortem or a process change",
+      "Owns their part of the outcome and kept stakeholders informed"
+    ],
+    "myStory": "NewForm: clearing a form's expiry sent null, Zod rejected it; fixed with z.union([z.null(), z.coerce.date()]) and 6 tests Flow: When the user clicks Save settings, react-hook-form first checks the input with zodResolver. Then the tRPC useMutation hook sends a batched request to the form.updateForm procedure. On the server, protectedProcedure checks the user is logged in, Zod validates the input, and the service checks the user owns the form and updates Postgres with Drizzle. Finally, onSuccess invalidates the form queries, the UI refetches, and the user sees a toast."
+  },
+  {
+    "id": "bh-decision-to-change",
+    "category": "behavioral",
+    "difficulty": "medium",
+    "question": "Tell me about a technical decision you made that you would make differently today.",
+    "followUps": [
+      "What information did you have at the time, and what did you learn later?",
+      "What did that decision cost the team, and how did you address it?",
+      "How has it changed the way you make similar decisions now?"
+    ],
+    "goodAnswerCovers": [
+      "Picks a real decision with real consequences, not a disguised strength",
+      "Explains the reasoning at the time fairly, including the constraints they had",
+      "Is clear about what went wrong and the cost, such as rework, incidents or slower delivery",
+      "Describes what they did to correct or contain it",
+      "States a concrete lesson that changed later behavior, such as writing design docs, running spikes or making decisions reversible"
+    ],
+    "myStory": ""
+  },
+  {
+    "id": "bh-leaving-last-job",
+    "category": "behavioral",
+    "difficulty": "medium",
+    "question": "Why are you leaving, or why did you leave, your last job?",
+    "followUps": [
+      "What did you enjoy most about that role?",
+      "What are you looking for in this role that you could not get there?",
+      "How did you leave things with your team?"
+    ],
+    "goodAnswerCovers": [
+      "Gives an honest, brief reason framed around growth or fit",
+      "Stays professional and does not criticize the former employer, manager or team",
+      "Connects what they want next to this specific role",
+      "Shows appreciation for what they learned or achieved there",
+      "Keeps the answer short and moves toward the future"
+    ],
+    "myStory": ""
+  },
+  {
+    "id": "bh-ai-coding-tools",
+    "category": "behavioral",
+    "difficulty": "medium",
+    "question": "How do you use AI coding tools in your day-to-day work, and how do you make sure the code they produce is correct and safe to ship?",
+    "followUps": [
+      "Tell me about a time an AI tool gave you something subtly wrong. How did you catch it?",
+      "Which tasks do you deliberately not hand to AI tools, and why?",
+      "How do you handle secrets, proprietary code and security when using these tools?"
+    ],
+    "goodAnswerCovers": [
+      "Names specific tools and concrete workflows rather than vague enthusiasm",
+      "Reviews, tests and understands generated code before merging and keeps responsibility for it",
+      "Gives an honest example of a failure such as hallucinated APIs, subtle bugs or insecure patterns, and how it was caught",
+      "Knows where the tools are strong (boilerplate, tests, exploring unfamiliar code) and where human judgment matters most (architecture, security, edge cases)",
+      "Considers data privacy, licensing and secret handling, and mentions measuring real productivity impact"
+    ],
+    "myStory": ""
+  },
+  {
+    "id": "ai-rag-pipeline",
+    "category": "ai-engineering",
+    "difficulty": "hard",
+    "question": "Design a retrieval-augmented generation pipeline that answers employee questions over a few hundred thousand internal documents. Walk me through it from ingestion to the final answer.",
+    "followUps": [
+      "How do you choose chunk size and overlap, and how would you know if you chose badly?",
+      "Retrieval keeps returning chunks that are related but don't contain the answer. How do you improve it?",
+      "How do you handle documents that change often, and documents some users aren't allowed to see?"
+    ],
+    "goodAnswerCovers": [
+      "Covers the ingestion stage: parsing, chunking with structure awareness, embeddings, and metadata such as source, date and permissions",
+      "Improves retrieval beyond plain vector search, for example hybrid keyword plus vector search, reranking, or query rewriting",
+      "Grounds the answer in retrieved context, cites sources, and tells the model to say it doesn't know when the context lacks the answer",
+      "Enforces access control at retrieval time and keeps the index fresh with incremental re-indexing",
+      "Evaluates retrieval and generation separately, for example recall@k on a labeled set plus faithfulness checks on answers"
+    ]
+  },
+  {
+    "id": "ai-agent-loop",
+    "category": "ai-engineering",
+    "difficulty": "hard",
+    "question": "Talk me through how you'd build an agent loop where an LLM can call tools, such as searching a database and sending an email, to complete a user's task.",
+    "followUps": [
+      "How does the loop decide when to stop, and what stops it from running forever?",
+      "A tool call fails or returns something unexpected. What does the agent see, and how should it recover?",
+      "Which tool calls would you require a human to approve, and how would you build that?"
+    ],
+    "goodAnswerCovers": [
+      "Describes the core loop: send messages and tool definitions, run any requested tool calls, append the results, and repeat until the model gives a final answer",
+      "Writes clear tool names, descriptions and input schemas, and validates arguments before executing",
+      "Adds guardrails: a maximum number of steps, timeouts, and a token or cost budget",
+      "Returns tool errors to the model as results so it can retry or change approach, instead of crashing the loop",
+      "Treats side-effecting actions carefully with confirmation steps, least-privilege credentials and audit logs, and mentions prompt injection through tool outputs"
+    ]
+  },
+  {
+    "id": "ai-llm-evaluation",
+    "category": "ai-engineering",
+    "difficulty": "medium",
+    "question": "You've built an LLM feature that summarizes customer support tickets. How do you evaluate it before shipping, and how do you keep evaluating it after launch?",
+    "followUps": [
+      "How do you build an evaluation dataset if you have no labeled data yet?",
+      "When is using an LLM as a judge reasonable, and how do you make sure the judge itself is reliable?",
+      "Someone wants to switch to a cheaper model or change the prompt. How do you decide whether it's safe?"
+    ],
+    "goodAnswerCovers": [
+      "Defines what good means for this feature in concrete criteria, such as accuracy, completeness, no invented facts, and length",
+      "Builds a representative test set from real tickets, including edge cases and known failure modes",
+      "Combines automated checks, LLM-as-judge with a rubric that is checked against human ratings, and human review",
+      "Runs the eval suite as a regression test on every prompt or model change and compares quality, latency and cost",
+      "Monitors in production with user feedback, sampled review, and tracking of drift or new failure types"
+    ]
+  },
+  {
+    "id": "ai-voice-latency",
+    "category": "ai-engineering",
+    "difficulty": "hard",
+    "question": "Users say your voice agent feels slow: there's a long pause after they stop talking before it replies. How would you find where the time goes and reduce it?",
+    "followUps": [
+      "How do you detect that the user has finished speaking, and what goes wrong if you get it wrong?",
+      "What can you start before the full LLM response is ready?",
+      "How would you handle the user interrupting the agent mid-sentence?"
+    ],
+    "goodAnswerCovers": [
+      "Breaks the delay into stages, such as end-of-speech detection, speech-to-text, LLM time to first token, text-to-speech time to first audio, and network, and measures each one",
+      "Streams through the whole pipeline: partial transcripts, streamed LLM tokens, and text-to-speech starting on the first sentence",
+      "Tunes turn detection (voice activity detection or a turn-taking model) to balance fast replies against cutting the user off",
+      "Reduces LLM latency with a smaller or faster model, shorter prompts, prompt caching, and fewer tool calls in the critical path",
+      "Supports barge-in by stopping audio playback and cancelling generation, and uses filler phrases or acknowledgements carefully while slow work runs"
+    ]
+  }
+]
