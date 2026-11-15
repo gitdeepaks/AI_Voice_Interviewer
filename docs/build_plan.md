@@ -31,18 +31,20 @@
 5. API keys go only in `.env.local` / Vercel env. Never paste them into a chat or a commit.
 6. **Next.js 16:** `middleware.ts` is now `proxy.ts`, and with `cacheComponents: true`, pages that call `auth()` or read cookies need `<Suspense>` or `connection()`.
 7. **Never import `questions.json` into a client component.** The rubric (`goodAnswerCovers`) and `myStory` stay on the server.
-8. **Skills** (installed once on Day 0, project level): `elevenlabs/skills` (Agents), `prisma/skills`, `clerk/skills` (setup + Next.js patterns), and `vercel-react-best-practices` from `vercel-labs/agent-skills`. Read each SKILL.md before installing, and only install from official owners.
+8. **Skills** (installed once on Day 0, project level): `elevenlabs/skills` (Agents), `prisma/skills` (ORM setup, Client API, CLI), `clerk/skills` (setup + Next.js patterns), and `vercel-react-best-practices` from `vercel-labs/agent-skills`. Always pass `--skill <name>`: when the CLI runs inside an agent it skips the picker and installs every skill in the repo. Read each SKILL.md before installing, and only install from official owners.
 
 ---
 
 ## Day 0: Give Claude Code the context (20 min)
 **First, install the skills (project level):**
 ```bash
-npx skills add elevenlabs/skills        # pick only the Agents skill when asked
-npx skills add prisma/skills
+npx skills add elevenlabs/skills --skill agents
+npx skills add prisma/skills --skill prisma-orm-setup
+npx skills add prisma/skills --skill prisma-client-api
+npx skills add prisma/skills --skill prisma-cli
 npx skills add clerk/skills --skill clerk-setup
 npx skills add clerk/skills --skill clerk-nextjs-patterns
-npx skills add vercel-labs/agent-skills # pick only vercel-react-best-practices
+npx skills add vercel-labs/agent-skills --skill vercel-react-best-practices
 ```
 
 **Prompt:**
@@ -55,7 +57,7 @@ npx skills add vercel-labs/agent-skills # pick only vercel-react-best-practices
 
 ## Day 1: Prompt from data, category picker
 **Prompt:**
-> First, switch the repo to Bun: run `bun install`, delete `package-lock.json`, and run scripts with `bun`. Then install Zod and put the question schema in one shared server-only module. `scripts/build-prompt.ts` validates `data/questions.json` with it and builds the interviewer system prompt with **only** each question and its `followUps`, never `goodAnswerCovers` or `myStory` (the agent doesn't need the rubric; only the Day 6 scorer does). Add a category picker on the home page. The client passes **only the category id** as a dynamic variable at `startSession` (check the ElevenLabs docs for how dynamic variables are declared in the prompt). The agent asks one question at a time from that category, uses `followUps`, and never gives the answer.
+> First, switch the repo to Bun: run `bun install`, delete `package-lock.json`, and run scripts with `bun`. Then install Zod and put the question schema and the prompt builder in one shared module that does **not** import `server-only`. It holds no data, and `server-only` throws outside Next, which would break the script and `bun test`. Only the app's question loader (e.g. `lib/questions.server.ts`, the module that reads `questions.json` for the app) imports `server-only`. `scripts/build-prompt.ts` validates `data/questions.json` with the schema and builds the interviewer system prompt with **only** each question and its `followUps`, never `goodAnswerCovers` or `myStory` (the agent doesn't need the rubric; only the Day 6 scorer does). Add a category picker on the home page. The client passes **only the category id** as a dynamic variable at `startSession` (check the ElevenLabs docs for how dynamic variables are declared in the prompt). The agent asks one question at a time from that category, uses `followUps`, and never gives the answer. The prompt has a fallback: if the category is missing or isn't a known id, the agent uses the first category in the bank and says which one it's using.
 
 **You review:** What happens if `questions.json` has a typo? (Zod should fail loudly.) Is the prompt built in one place only? Search the client bundle for a phrase from `goodAnswerCovers`: it must not appear.
 **Done when:** picking "System design" means the agent asks only system design questions.
@@ -65,7 +67,7 @@ npx skills add vercel-labs/agent-skills # pick only vercel-react-best-practices
 
 ## Day 2: Private agent + server-side token 🔐
 **Prompt:**
-> Make the agent private (enable authentication in the agent's settings; tell me which toggle). Add a Next.js route handler `POST /api/conversation-token` that calls the ElevenLabs API with `ELEVENLABS_API_KEY` (server only) and returns a short-lived conversation token for WebRTC. The client calls this route and starts the session with the token. Remove the `NEXT_PUBLIC_` agent dependency.
+> Make the agent private (enable authentication in the agent's settings; tell me which toggle). Add a Next.js route handler `POST /api/conversation-token` that calls the ElevenLabs API with `ELEVENLABS_API_KEY` (server only) and returns a short-lived conversation token for WebRTC. The client sends `{ category }` in the body. The route validates it with a Zod enum of the category ids from the question bank and returns 400 for anything else, before calling ElevenLabs. The client calls this route and starts the session with the token. Remove the `NEXT_PUBLIC_` agent dependency.
 
 **You review:**
 - Search the built client bundle (`.next/static`) for your key prefix: it must not appear.
@@ -89,16 +91,16 @@ npx skills add vercel-labs/agent-skills # pick only vercel-react-best-practices
 
 ## Day 4: Database (Prisma + Neon)
 **Prompt:**
-> Add Prisma with Neon Postgres (use the Prisma skill). Use Neon's **pooled** connection string for the app (`DATABASE_URL`) and the **direct** one for migrations (`DIRECT_URL`), so serverless functions don't run out of connections. Models: `interview_sessions` (id, clerkUserId (indexed), category, elevenlabsConversationId unique, status: started | completed | failed, startedAt, endedAt, durationSec), `transcripts` (sessionId, turns jsonb), `feedback` (sessionId, overallScore, report jsonb). Create a session row (unguessable id) when a token is issued, and return its id to the client. Before issuing a token, count today's rows for this `clerkUserId`: 3 or more → 429 with a clear message (the daily quota). Add migrations.
+> Add Prisma with Neon Postgres (use the Prisma skill). Use Neon's **pooled** connection string for the app (`DATABASE_URL`) and the **direct** one for migrations (`DIRECT_URL`), so serverless functions don't run out of connections. Models: `interview_sessions` (id, clerkUserId (indexed), category, elevenlabsConversationId unique, status: started | completed | failed, startedAt, endedAt, durationSec), `transcripts` (sessionId, turns jsonb), `feedback` (sessionId, overallScore, report jsonb). Create a session row (unguessable id) when a token is issued, and return its id to the client. Before issuing a token, enforce the daily quota in **one transaction**: take `pg_advisory_xact_lock` on the user id (e.g. `hashtext(clerkUserId)`), count this user's sessions with `startedAt` in the **last 24 hours (rolling)** and status not `failed`, and insert the new row only if the count is under 3. Otherwise return 429 with a clear message. Add migrations.
 
-**You review:** Why no `users` table? (Clerk owns users; we store `clerkUserId`. Add a table plus Clerk webhooks only when we need user data in our DB.) Which columns need indexes? (clerkUserId + startedAt for "sessions today".) Where is the unique constraint, and why?
-**Done when:** every call creates a row you can see in Neon, and a 4th session on the same day is refused.
+**You review:** Why no `users` table? (Clerk owns users; we store `clerkUserId`. Add a table plus Clerk webhooks only when we need user data in our DB.) Which columns need indexes? (clerkUserId + startedAt for "sessions in the last 24 hours".) Where is the unique constraint, and why? Why the advisory lock? (Without it, two requests at the same moment both count 2 and both insert.)
+**Done when:** every call creates a row you can see in Neon, and a 4th non-failed session within 24 hours is refused.
 
 ---
 
 ## Day 5: Post-call webhook, verified and idempotent
 **Prompt:**
-> Add `POST /api/webhooks/elevenlabs` for the post-call transcription webhook. Read the **raw body** with `await request.text()` and verify the HMAC signature with the webhook secret **before** `JSON.parse` (reject on mismatch or an old timestamp). Match the webhook to our session through a `session_id` dynamic variable the client passes at `startSession` (it comes back in the payload), so a closed tab doesn't lose the link; upsert on the conversation id. Make it idempotent: a unique constraint on the conversation id, claimed first, so a duplicate delivery is a no-op. Store the transcript, mark the session completed, and return 200 quickly. Don't do slow work inside the request.
+> Add `POST /api/webhooks/elevenlabs` for the post-call transcription webhook. Read the **raw body** with `await request.text()` and verify the HMAC signature with the webhook secret **before** `JSON.parse` (reject on mismatch or an old timestamp). Match the webhook to our session through a `session_id` dynamic variable the client passes at `startSession` (it comes back in the payload), so a closed tab doesn't lose the link. Link it with a **conditional update**: set the conversation id and mark the session completed only where `id = session_id`, status is `started`, and the conversation id is null or equal to this one. Zero rows updated means a duplicate, forged or stale event: ignore it, log it, and return 200. Make it idempotent: the conditional update is the claim, and the unique constraint on the conversation id backs it up, so a duplicate delivery is a no-op. In the same transaction, store the transcript, then return 200 quickly. Don't do slow work inside the request.
 
 **You review:** What happens if ElevenLabs sends the same webhook twice? If your DB is down? (Return non-2xx so it retries.)
 **Done when:** a finished call shows its transcript in the DB, and replaying the same payload changes nothing.

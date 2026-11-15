@@ -18,7 +18,7 @@ Snapshot taken on Day 0 (2026-11-15), on branch `add-question-bank`. It compares
 ## Not tied to one day
 
 1. **npm vs Bun.** The repo has `package-lock.json` and no `bun.lock`, and `build-prompt` runs under `node`. The plan fixes this at the start of Day 1.
-2. **Uncommitted interview UI.** `app/interview.tsx`, the new `app/page.tsx` and the `@elevenlabs/react` dependency aren't committed. Per Day 0, they go on their own branch first.
+2. **Interview UI (done on Day 0).** `app/interview.tsx`, the new `app/page.tsx` and the `@elevenlabs/react` dependency are committed on their own branch, `interview-ui`.
 3. **Skills (done on Day 0).** These are installed at project level in `.agents/skills`, with symlinks in `.claude/skills`, and listed in `skills-lock.json`: `agents` (ElevenLabs), `clerk-setup`, `clerk-nextjs-patterns`, `vercel-react-best-practices`, `prisma-orm-setup`, `prisma-client-api`, `prisma-cli`. Inside Claude Code, the `skills` CLI skips the picker and installs every skill in the repo, so always pass `--skill <name>`.
 
 ## Plan risks: now covered in `build_plan.md`
@@ -29,14 +29,15 @@ These were raised on Day 0, and the revised plan handles them:
 - Day 1: the agent prompt has only questions and `followUps`, and the client sends only the category id (rules 7 and 8).
 - Day 3: `clerkMiddleware()` goes in `proxy.ts` (rule 6).
 - Day 3 vs Day 4: Redis handles the rate limit and the DB handles the daily quota, each as the single source of truth for its job.
-- Day 5: a `session_id` dynamic variable plus an upsert on the conversation id, and HMAC checked on the raw body before `JSON.parse`.
+- Day 5: a `session_id` dynamic variable links the webhook to the session, and HMAC is checked on the raw body before `JSON.parse`.
 - Day 6: decide whether to drop the spoken feedback.
 - `cacheComponents` needs `<Suspense>` or `connection()` (rule 6).
+- Day 1: the schema and prompt builder stay free of `server-only`, which throws outside Next and would break the script and `bun test`. Only the app's question loader imports it.
+- Days 1–2: the category is client input. The token route validates it with a Zod enum (400 otherwise), and the agent prompt falls back to the first category when the value is missing or unknown.
+- Day 4: the daily quota counts and inserts in one transaction under `pg_advisory_xact_lock` on the user id. "Today" means the last 24 hours (rolling), and `failed` sessions don't count.
+- Day 5: the webhook links with a conditional update, only to a session that is `started` and has no conversation id (or the same one). Zero rows updated → ignore, log and return 200, so a forged or replayed `session_id` can't overwrite a finished session.
+- Day 0: every install command uses `--skill`, so running from an agent doesn't install whole repos.
 
 ## Plan risks still open
 
-1. **Day 1: `server-only` vs the script.** The `server-only` package throws unless it's loaded under the `react-server` export condition. Next sets that condition, but plain `bun scripts/build-prompt.ts` and `bun test` don't. If the shared schema module does `import "server-only"`, the script and its tests crash. Fix: keep the Zod schema and prompt builder in a module with no `server-only` (it holds no data). Put `import "server-only"` only in the module that loads `questions.json` for the app, for example `lib/questions.server.ts`. The other option is running the script with `bun --conditions=react-server`.
-2. **Day 1: the category is client input.** A user can send any string as the `category` dynamic variable. Tell the agent to fall back to a default category (or refuse) when it doesn't recognise one. From Day 2, the token route can also check the category with Zod against the known ids.
-3. **Day 4: race in the daily quota.** "Count today's rows, then insert" lets two requests made at the same moment both see 2 and both create a session, giving 4. Do the count and the insert in one transaction, with a per-user lock (`pg_advisory_xact_lock(hashtext(clerkUserId))`) or serializable isolation. Also decide what "today" means (UTC is simplest), and whether sessions that never connected (status still `started` after N minutes) count.
-4. **Day 5: `session_id` comes from the client.** A user could pass someone else's session id. The id is unguessable (Day 4), and the webhook should also accept a link only when that session is still `started` and has no conversation id, or the same one. That way a replayed or forged id can't overwrite a finished session.
-5. **Day 0 install commands.** The commands without `--skill` (for `elevenlabs/skills`, `prisma/skills` and `vercel-labs/agent-skills`) install everything when run from Claude Code (35 skills last time). Use the `--skill` forms listed in item 3.
+None right now.
