@@ -9,8 +9,9 @@ A voice mock-interviewer. The user does a spoken interview with an ElevenLabs Co
 - **Next.js 16.4** (App Router, Turbopack, `cacheComponents: true`, `partialPrefetching: true`). React 19.3, TypeScript 5 (strict).
 - **Tailwind CSS 4** through `@tailwindcss/turbopack` (configured in `next.config.ts`).
 - **ElevenLabs Agents** via `@elevenlabs/react` (`ConversationProvider` + `useConversation`, `connectionType: "webrtc"`).
-- **Bun** is the package manager and test runner (Bun 1.4, Node 24 is also installed). The repo still has an npm `package-lock.json`; see `docs/gaps.md`.
-- Planned (not installed yet): Zod, Clerk, Prisma + Neon Postgres, Upstash Redis, Sentry, Vercel.
+- **Bun** is the package manager and test runner (Bun 1.4, Node 24 is also installed). The lockfile is `bun.lock`.
+- **Zod 4** validates `data/questions.json` (`lib/questions.ts`).
+- Planned (not installed yet): Clerk, Prisma + Neon Postgres, Upstash Redis, Sentry, Vercel.
 
 ## Commands
 
@@ -22,7 +23,7 @@ bun run start                    # serve the production build
 bun run lint                     # ESLint (next core-web-vitals + typescript)
 bunx tsc --noEmit                # typecheck (no script yet)
 bun test                         # tests (none yet; added on Day 8)
-bun run -s build-prompt          # print the interviewer system prompt from data/questions.json
+bun run build-prompt             # print the interviewer system prompt (| pbcopy to copy it)
 ```
 
 ## Layout
@@ -30,15 +31,18 @@ bun run -s build-prompt          # print the interviewer system prompt from data
 ```
 app/
   layout.tsx          root layout, Geist fonts
-  page.tsx            home page (server component), renders <Interview />
-  interview.tsx       client component: mic permission + ElevenLabs session
+  page.tsx            home page (server component), passes category ids/labels to <Interview />
+  interview.tsx       client component: category picker, mic permission, ElevenLabs session
   globals.css         Tailwind entry
+lib/
+  questions.ts        Zod question schema, category helpers, buildInterviewerPrompt()
+                      (pure: no data, no server-only, so scripts and tests can import it)
+  questions.server.ts server-only loader: validates questions.json, exposes category options
 data/
   questions.json      question bank: 16 questions, 4 categories
                       (system-design, javascript, ai-engineering, behavioral)
 scripts/
   build-prompt.ts     validates questions.json and prints the agent system prompt
-  package.json        {"type":"module"} so Node runs the script as ESM
 docs/
   build_plan.md       the 11-day production plan
   gaps.md             gaps between the repo and the production checklist

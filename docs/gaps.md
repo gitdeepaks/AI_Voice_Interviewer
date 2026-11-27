@@ -1,6 +1,6 @@
 # Gaps: repo vs production checklist
 
-Snapshot taken on Day 0 (2026-11-15), on branch `add-question-bank`. It compares the repo with the "What production ready means here" table in `docs/build_plan.md`. Typecheck and lint pass today, and `bun run -s build-prompt` works.
+Snapshot taken on Day 0 (2026-11-15), on branch `add-question-bank`. It compares the repo with the "What production ready means here" table in `docs/build_plan.md`. Typecheck and lint pass today, and `build-prompt` works.
 
 ## By checklist area
 
@@ -11,14 +11,14 @@ Snapshot taken on Day 0 (2026-11-15), on branch `add-question-bank`. It compares
 | Data | Nothing is stored. | Prisma + Neon (pooled `DATABASE_URL`, direct `DIRECT_URL`), the `interview_sessions` / `transcripts` / `feedback` models, and migrations. | Day 4 |
 | Value | The only feedback is the agent's spoken summary at the end (step 6 of the prompt). Nothing is written down or scored. | A post-call scored report per question against `goodAnswerCovers`, and a `/sessions/[id]` page. | Day 6 |
 | Reliability | `start()` doesn't catch errors: if the mic is denied or `startSession` fails, you get an unhandled rejection and the UI shows nothing. `onError` only logs to the console. No webhook. | An HMAC-verified, idempotent post-call webhook, and UI states for mic denied, connecting, errors, disconnect and limit reached. | Days 5, 7 |
-| Quality | No tests, no `test` or `typecheck` script, no CI. Zod isn't installed: `scripts/build-prompt.ts` validates by hand. | Install Zod and use a shared schema. Add `bun test` suites and a GitHub Actions workflow (install, typecheck, lint, test). | Days 1, 8 |
+| Quality | Zod is installed, and the shared schema in `lib/questions.ts` validates `questions.json` (done on Day 1). No tests, no `test` or `typecheck` script, no CI. | Add `bun test` suites and a GitHub Actions workflow (install, typecheck, lint, test). | Day 8 |
 | Operations | No env validation (env vars are read with `!`). No error tracking. Never deployed. No `.env.example`. | Zod env schema at boot, Sentry or structured logs, Vercel production deploy, `.env.example` listing var names only. | Day 9 |
 | Story | `README.md` is create-next-app boilerplate. `app/layout.tsx` metadata still says "Create Next App". | README with Mermaid diagram, setup steps and trade-offs. Real page title. Demo video. | Day 10 |
 
 ## Not tied to one day
 
-1. **npm vs Bun.** The repo has `package-lock.json` and no `bun.lock`, and `build-prompt` runs under `node`. The plan fixes this at the start of Day 1.
-2. **Interview UI (done on Day 0).** `app/interview.tsx`, the new `app/page.tsx` and the `@elevenlabs/react` dependency are committed on their own branch, `interview-ui`.
+1. **npm vs Bun (done on Day 1).** `package-lock.json` is gone, `bun.lock` is committed, and `build-prompt` runs under `bun`. Use `bun run build-prompt` (Bun has no `-s` flag; it prints its own command line to stderr, so piping stays clean).
+2. **Interview UI (done on Day 0).** `app/interview.tsx`, the new `app/page.tsx` and the `@elevenlabs/react` dependency are committed on their own branch, `interview-ui`, which is merged into the Day 1 branch.
 3. **Skills (done on Day 0).** These are installed at project level in `.agents/skills`, with symlinks in `.claude/skills`, and listed in `skills-lock.json`: `agents` (ElevenLabs), `clerk-setup`, `clerk-nextjs-patterns`, `vercel-react-best-practices`, `prisma-orm-setup`, `prisma-client-api`, `prisma-cli`. Inside Claude Code, the `skills` CLI skips the picker and installs every skill in the repo, so always pass `--skill <name>`.
 
 ## Plan risks: now covered in `build_plan.md`
@@ -40,4 +40,4 @@ These were raised on Day 0, and the revised plan handles them:
 
 ## Plan risks still open
 
-None right now.
+Day 2: the server must validate category against the known ids with Zod and reject anything else, because dynamic variables are inserted into the system prompt (prompt-injection risk). Also: the system prompt is pasted into the ElevenLabs dashboard by hand, so it can drift from the repo.
